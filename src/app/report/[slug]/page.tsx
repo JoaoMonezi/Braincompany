@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { EyeIcon, HeartIcon, MessageCircleIcon } from 'lucide-react'
+import { ReportActions } from './actions-ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,8 +68,11 @@ export default async function ClientReportPage({ params }: Context) {
       </div>
 
       {/* Tabela de Posts */}
-      <div>
-        <h2 className="text-xl font-bold mb-4 text-white">Últimos Posts Relacionados</h2>
+      <div className="print:mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white print:text-black">Últimos Posts Relacionados</h2>
+          <ReportActions />
+        </div>
         
         {!posts || posts.length === 0 ? (
           <div className="text-center py-20 border border-neutral-800 border-dashed rounded-xl bg-neutral-900/50">
