@@ -28,11 +28,14 @@ export async function inviteClientAction(projectId: string, email: string) {
 
   // Gera um Magic Link via Admin API do Supabase Auth para enviar por e-mail,
   // E já cria o usuário se ele não existir
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL 
+    || (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : 'http://localhost:3000')
+
   const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
     type: 'magiclink',
     email: email,
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/report/${project.slug}`
+      redirectTo: `${appUrl}/report/${project.slug}`
     }
   })
 
