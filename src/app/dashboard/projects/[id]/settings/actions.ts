@@ -51,22 +51,23 @@ export async function inviteClientAction(projectId: string, email: string) {
   // Pegamos o ID do usuário (o generateLink retorna o user)
   const userId = linkData.user.id
 
-  // 1. Inserir ou ignorar na tabela users (role: client)
+  // 1. Inserir ou ignorar na tabela user_roles (role: client)
+  // Nota: o trigger no DB já deve ter criado o usuário, mas o upsert garante caso a role seja diferente
   const { error: insertUserError } = await supabase
-    .from('users')
-    .upsert({ id: userId, email: email, role: 'client' }, { onConflict: 'id' })
+    .from('user_roles')
+    .upsert({ user_id: userId, role: 'client' }, { onConflict: 'user_id' })
 
   if (insertUserError) {
-    console.error('[inviteClientAction] upsert user error:', insertUserError)
+    console.error('[inviteClientAction] upsert user_roles error:', insertUserError)
   }
 
-  // 2. Criar a relação na project_users
+  // 2. Criar a relação na client_users
   const { error: insertProjectUserError } = await supabase
-    .from('project_users')
+    .from('client_users')
     .upsert({ user_id: userId, project_id: projectId }, { onConflict: 'user_id,project_id' })
 
   if (insertProjectUserError) {
-    console.error('[inviteClientAction] upsert project_users error:', insertProjectUserError)
+    console.error('[inviteClientAction] upsert client_users error:', insertProjectUserError)
     return { error: 'Erro ao associar usuário ao projeto.' }
   }
 
