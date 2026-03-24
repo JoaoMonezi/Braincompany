@@ -5,10 +5,10 @@ import { upsertPost, saveRawResponse } from '@/lib/db/posts'
 import {
   getScrapingJobByProviderJobId,
   updateScrapingJob,
-  createScrapingJob,
 } from '@/lib/db/scraping-jobs'
 import { getProfileById } from '@/lib/db/profiles'
 import type { ProfileRules } from '@/lib/schemas/profile'
+import { notifyScrapingError, notifyScrapingSuccess } from '@/lib/notifications'
 
 // Validação do secret do webhook (previne chamadas não autorizadas)
 function validateWebhookSecret(request: NextRequest): boolean {
@@ -45,6 +45,8 @@ const WebhookSchema = z.object({
 })
 
 export async function POST(request: NextRequest) {
+  let profileIdForError: string | undefined = undefined
+
   try {
     if (!validateWebhookSecret(request)) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    // Extrair runId e datasetId do payload (Apify pode ter formatos diferentes)
+    // Extrair runId e datasetId do payload 
     const runId = parsed.data.resource?.id ?? parsed.data.actorRunId
     const datasetId = parsed.data.resource?.defaultDatasetId ?? parsed.data.defaultDatasetId
     const runStatus = parsed.data.resource?.status ?? parsed.data.status
@@ -65,27 +67,25 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'runId não encontrado no payload' }, { status: 400 })
     }
 
-    // Se não terminou com sucesso, marcar job como failed
-    if (runStatus && !['SUCCEEDED', 'FINISHED'].includes(runStatus)) {
-      const job = await getScrapingJobByProviderJobId(runId)
-      if (job) {
-        await updateScrapingJob(job.id, {
-          status: 'failed',
-          finished_at: new Date().toISOString(),
-          error_msg: `Apify run status: ${runStatus}`,
-        })
-      }
-      return Response.json({ ok: true, status: 'job_failed' })
-    }
-
     // Buscar o job correspondente ao runId
-    let job = await getScrapingJobByProviderJobId(runId)
+    const job = await getScrapingJobByProviderJobId(runId)
 
-    // Se não existe job ainda (possível edge case), criar um
-    // Neste caso não temos como associar ao profile_id → retornar ok e logar
     if (!job) {
       console.warn(`[ingest] Job não encontrado para runId: ${runId}`)
       return Response.json({ ok: true, status: 'job_not_found' })
+    }
+
+    profileIdForError = job.profile_id
+
+    // Se não terminou com sucesso, marcar job como failed
+    if (runStatus && !['SUCCEEDED', 'FINISHED'].includes(runStatus)) {
+      await updateScrapingJob(job.id, {
+        status: 'failed',
+        finished_at: new Date().toISOString(),
+        error_msg: `Apify run status: ${runStatus}`,
+      })
+      await notifyScrapingError(job.profile_id, `Apify run status: ${runStatus}`)
+      return Response.json({ ok: true, status: 'job_failed' })
     }
 
     // Atualizar job para running
@@ -98,11 +98,13 @@ export async function POST(request: NextRequest) {
 
     // Buscar items do dataset
     if (!datasetId) {
+      const errorMsg = 'datasetId não encontrado no webhook payload'
       await updateScrapingJob(job.id, {
         status: 'failed',
         finished_at: new Date().toISOString(),
-        error_msg: 'datasetId não encontrado no webhook payload',
+        error_msg: errorMsg,
       })
+      await notifyScrapingError(job.profile_id, errorMsg)
       return Response.json({ error: 'datasetId ausente' }, { status: 400 })
     }
 
@@ -131,7 +133,7 @@ export async function POST(request: NextRequest) {
           caption: normalized.caption ?? null,
           post_type: normalized.post_type ?? null,
           published_at: normalized.published_at ?? null,
-          metrics: normalized.metrics,
+          metrics: Object.keys(normalized.metrics || {}).length > 0 ? normalized.metrics : {},
         })
 
         if (result) collected++
@@ -147,17 +149,22 @@ export async function POST(request: NextRequest) {
       posts_collected: collected,
     })
 
-    // Atualizar status do perfil para active
-    const supabase = (await import('@/lib/supabase/admin')).createAdminClient()
-    await supabase.from('profiles').update({ status: 'active', error_msg: null }).eq('id', profile.id)
+    // Atualiza o perfil para ativo + limpa erros via notifyScrapingSuccess
+    await notifyScrapingSuccess(profile.id, collected)
 
     console.log(`[ingest] ✅ runId=${runId} profile=${profile.handle} collected=${collected}/${items.length}`)
 
     return Response.json({ ok: true, collected, total: items.length })
   } catch (error) {
-    console.error('[ingest] Erro:', error)
+    console.error('[ingest] Erro global:', error)
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown'
+    if (profileIdForError) {
+      await notifyScrapingError(profileIdForError, `Erro interno no ingest: ${errorMessage}`)
+    }
+    
     return Response.json(
-      { error: 'Erro interno no ingest', message: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Erro interno no ingest', message: errorMessage },
       { status: 500 }
     )
   }
