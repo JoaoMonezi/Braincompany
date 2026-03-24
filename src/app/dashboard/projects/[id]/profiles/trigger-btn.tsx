@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { PlayIcon, Loader2Icon } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function TriggerScrapeButton({ profileId }: { profileId: string }) {
   const [isPending, setIsPending] = useState(false)
@@ -14,9 +15,9 @@ export function TriggerScrapeButton({ profileId }: { profileId: string }) {
         const data = await res.json()
         throw new Error(data.error || 'Erro ao iniciar scraping')
       }
-      alert('Coleta iniciada! Os posts aparecerão em breve.')
+      toast.success('Coleta iniciada! Os posts aparecerão em breve.')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro interno')
+      toast.error(err instanceof Error ? err.message : 'Erro interno')
     } finally {
       setIsPending(false)
     }
