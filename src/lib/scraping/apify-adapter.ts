@@ -33,8 +33,15 @@ export class ApifyAdapter implements ScrapingAdapter {
     if (!actorId) throw new Error(`Actor ID não configurado para ${platform}`)
 
     const input = this.buildInput(platform, handle, rules)
+    const webhooks = this.buildWebhooks()
+    let url = `${this.baseUrl}/acts/${actorId}/runs`
+    
+    if (webhooks) {
+      const webhooksBase64 = Buffer.from(JSON.stringify(webhooks)).toString('base64')
+      url += `?webhooks=${webhooksBase64}`
+    }
 
-    const res = await fetch(`${this.baseUrl}/acts/${actorId}/runs`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify(input),
