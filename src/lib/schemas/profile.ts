@@ -13,6 +13,7 @@ export const CreateProfileSchema = z.object({
   platform: z.enum(['instagram', 'tiktok', 'youtube']),
   handle: z.string().min(1).max(100).transform((h) => h.replace(/^@/, '')),
   display_name: z.string().max(200).optional(),
+  schedule_time: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Formato inválido. Use HH:mm').default('08:00'),
   rules: ProfileRulesSchema.default(() => ({
     include_hashtags: [],
     exclude_hashtags: [],
@@ -26,6 +27,7 @@ export const UpdateProfileSchema = z.object({
   handle: z.string().min(1).max(100).optional(),
   display_name: z.string().max(200).optional(),
   status: z.enum(['active', 'paused', 'error']).optional(),
+  schedule_time: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
   rules: ProfileRulesSchema.optional(),
 })
 

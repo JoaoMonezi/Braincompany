@@ -75,6 +75,120 @@ export class ApifyAdapter implements ScrapingAdapter {
     return 'running'
   }
 
+  private buildWebhooks() {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    const secret = process.env.INGEST_WEBHOOK_SECRET
+
+    if (!appUrl || appUrl.includes('localhost')) return undefined
+
+    return [
+      {
+        eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.ABORTED', 'ACTOR.RUN.TIMED_OUT'],
+        requestUrl: `${appUrl}/api/ingest`,
+        payloadTemplate: `{"eventType":"{{eventType}}","eventData":{{eventData}},"resource":{{resource}}}`,
+        headersTemplate: secret ? `{ "x-webhook-secret": "${secret}" }` : undefined
+      }
+    ]
+  }
+
+  // Helpers to manage schedules
+  async createSchedule(
+    profileId: string,
+    platform: 'instagram' | 'tiktok' | 'youtube',
+    handle: string,
+    rules: Record<string, unknown>,
+    time: string // Format "HH:mm"
+  ): Promise<string> {
+    const actorId = ACTOR_IDS[platform]
+    if (!actorId) throw new Error(`Actor ID não configurado para ${platform}`)
+
+    const input = this.buildInput(platform, handle, rules)
+    const [hour, minute] = time.split(':')
+    const cronExpression = `${minute} ${hour} * * *`
+    const webhooks = this.buildWebhooks()
+
+    const res = await fetch(`${this.baseUrl}/schedules`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({
+        name: `BC_Profile_${profileId}`,
+        isEnabled: true,
+        isExclusive: true,
+        cronExpression,
+        timezone: 'America/Sao_Paulo',
+        actions: [
+          {
+            type: 'RUN_ACTOR',
+            actorId,
+            runInput: input,
+            runOptions: {
+              build: 'latest',
+              memoryMbytes: Math.max(1024, 2048), // Algumas plataformas pedem +, YT e TT recomendam 2+
+              webhooks
+            }
+          }
+        ]
+      })
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Apify createSchedule falhou: ${err}`)
+    }
+
+    const data = await res.json() as { data: { id: string } }
+    return data.data.id
+  }
+
+  async updateSchedule(
+    scheduleId: string,
+    platform: 'instagram' | 'tiktok' | 'youtube',
+    handle: string,
+    rules: Record<string, unknown>,
+    time: string,
+    isEnabled: boolean = true
+  ): Promise<void> {
+    const actorId = ACTOR_IDS[platform]
+    if (!actorId) throw new Error(`Actor ID não configurado para ${platform}`)
+
+    const input = this.buildInput(platform, handle, rules)
+    const [hour, minute] = time.split(':')
+    const cronExpression = `${minute} ${hour} * * *`
+    const webhooks = this.buildWebhooks()
+
+    const res = await fetch(`${this.baseUrl}/schedules/${scheduleId}`, {
+      method: 'PUT',
+      headers: this.headers(),
+      body: JSON.stringify({
+        isEnabled,
+        cronExpression,
+        timezone: 'America/Sao_Paulo',
+        actions: [
+          {
+            type: 'RUN_ACTOR',
+            actorId,
+            runInput: input,
+            runOptions: {
+              build: 'latest',
+              memoryMbytes: 1024,
+              webhooks
+            }
+          }
+        ]
+      })
+    })
+
+    if (!res.ok) throw new Error(`Apify updateSchedule falhou: ${await res.text()}`)
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/schedules/${scheduleId}`, {
+      method: 'DELETE',
+      headers: this.headers()
+    })
+    if (!res.ok) throw new Error(`Apify deleteSchedule falhou: ${await res.text()}`)
+  }
+
   private buildInput(
     platform: string,
     handle: string,

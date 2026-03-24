@@ -20,6 +20,7 @@ export function AddProfileModal({ projectId }: { projectId: string }) {
       project_id: projectId,
       platform: formData.get('platform'),
       handle: formData.get('handle'),
+      schedule_time: formData.get('schedule_time') || '08:00',
       rules: {
         min_views: Number(formData.get('min_views') || 0),
         include_hashtags: formData.get('include_hashtags') ? String(formData.get('include_hashtags')).split(',').map(s => s.trim()).filter(Boolean) : [],
@@ -98,6 +99,16 @@ export function AddProfileModal({ projectId }: { projectId: string }) {
                 name="handle"
                 required
                 placeholder="Ex: cocacola_br"
+                className="flex h-10 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-600 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" title="Horário que a Apify roda a coleta todo dia automaticamente">Horário de Coleta 🕐</label>
+              <input 
+                type="time"
+                name="schedule_time"
+                required
+                defaultValue="08:00"
                 className="flex h-10 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-600 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
               />
             </div>

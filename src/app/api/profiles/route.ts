@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createProfile, getProfilesByProject } from '@/lib/db/profiles'
 import { createScrapingJob } from '@/lib/db/scraping-jobs'
 import { CreateProfileSchema } from '@/lib/schemas/profile'
-import { triggerScrape } from '@/lib/scraping'
+import { ApifyAdapter } from '@/lib/scraping/apify-adapter'
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,13 +33,29 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Dados inválidos', details: parsed.error.flatten() }, { status: 422 })
     }
 
-    const { project_id, platform, handle, display_name, rules } = parsed.data
+    const { project_id, platform, handle, display_name, rules, schedule_time } = parsed.data
 
     // Verificar se o usuário é operator do projeto
     const { data: isOperator } = await supabase.rpc('is_project_operator', { p_project_id: project_id })
     if (!isOperator) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-    // Criar o perfil
+    // Criar o schedule na Apify
+    let apify_schedule_id = null
+    try {
+      const adapter = new ApifyAdapter()
+      apify_schedule_id = await adapter.createSchedule(
+        crypto.randomUUID(), // Temporário pro nome do schedule (já que o DB gera o uuid final)
+        platform,
+        handle,
+        rules as Record<string, unknown>,
+        schedule_time
+      )
+    } catch (scrapeErr) {
+      console.error('[profiles] Erro ao criar schedule:', scrapeErr)
+      return Response.json({ error: 'Erro ao criar agendamento na Apify' }, { status: 500 })
+    }
+
+    // Criar o perfil no banco com o schedule_id
     const profile = await createProfile({
       project_id,
       platform,
@@ -47,16 +63,9 @@ export async function POST(request: NextRequest) {
       display_name: display_name ?? null,
       rules,
       status: 'active',
-    })
-
-    // Disparar scraping inicial
-    try {
-      const runId = await triggerScrape(platform, handle, profile.id)
-      await createScrapingJob(profile.id, 'apify', runId)
-    } catch (scrapingError) {
-      // Não falhar o request se o scraping der erro — perfil já foi criado
-      console.error('[profiles] Erro ao disparar scraping inicial:', scrapingError)
-    }
+      schedule_time,
+      apify_schedule_id
+    } as any) // as any para contornar tipo Database enquanto a migration real n rola no ts types
 
     return Response.json({ profile }, { status: 201 })
   } catch (error) {
