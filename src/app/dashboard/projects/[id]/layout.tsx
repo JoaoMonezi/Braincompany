@@ -71,6 +71,12 @@ export default async function ProjectLayout({
             Posts
           </Link>
           <Link 
+            href={`/dashboard/projects/${id}/logs`}
+            className="px-3 py-1.5 rounded-md hover:bg-neutral-800 transition-colors"
+          >
+            Histórico
+          </Link>
+          <Link 
             href={`/dashboard/projects/${id}/settings`}
             className="px-3 py-1.5 rounded-md hover:bg-neutral-800 transition-colors text-neutral-400"
           >
