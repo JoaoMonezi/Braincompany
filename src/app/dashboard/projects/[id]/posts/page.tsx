@@ -1,40 +1,144 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { TrashIcon, ExternalLinkIcon, EyeIcon, HeartIcon, MessageCircleIcon } from 'lucide-react'
+import { ExternalLinkIcon, EyeIcon, HeartIcon, MessageCircleIcon } from 'lucide-react'
 import { DeletePostButton } from './delete-btn'
 
 export const dynamic = 'force-dynamic'
 
 type Context = { params: Promise<{ id: string }> }
 
-export default async function ProjectPostsPage({ params }: Context) {
+export default async function ProjectPostsPage({
+  params,
+  searchParams,
+}: Context & { searchParams: Promise<Record<string, string | undefined>> }) {
   const { id } = await params
+  const sp = await searchParams
   const supabase = await createClient()
 
-  // Buscar posts da view "active_posts" apenas para este projeto
-  const { data: posts } = await supabase
+  // Filtros
+  const filterPlatform = sp.platform || ''
+  const filterHandle = sp.handle || ''
+  const filterFrom = sp.from || ''
+  const filterTo = sp.to || ''
+
+  // Buscar perfis para dropdown de filtro
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, platform, handle')
+    .eq('project_id', id)
+    .order('handle')
+
+  // Query posts com filtros
+  let query = supabase
     .from('active_posts')
     .select('*')
     .eq('project_id', id)
     .order('published_at', { ascending: false })
-    .limit(100)
+    .limit(200)
+
+  if (filterPlatform) {
+    query = query.eq('platform', filterPlatform)
+  }
+  if (filterHandle) {
+    query = query.eq('handle', filterHandle)
+  }
+  if (filterFrom) {
+    query = query.gte('published_at', new Date(filterFrom).toISOString())
+  }
+  if (filterTo) {
+    const to = new Date(filterTo)
+    to.setDate(to.getDate() + 1)
+    query = query.lt('published_at', to.toISOString())
+  }
+
+  const { data: posts } = await query
 
   if (!posts) {
     return <div className="p-8">Erro ao carregar posts.</div>
   }
 
+  // Plataformas únicas para filtro
+  const platforms = [...new Set(profiles?.map(p => p.platform) ?? [])]
+
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-bold mb-1">Posts Coletados</h2>
-          <p className="text-sm text-neutral-400">Últimos 100 posts ativos monitorados em todas as plataformas.</p>
+          <p className="text-sm text-neutral-400">{posts.length} posts encontrados</p>
         </div>
       </div>
 
+      {/* Filtros */}
+      <form method="GET" className="flex flex-wrap items-end gap-3 mb-6 p-4 bg-neutral-950 border border-neutral-800 rounded-lg">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">Plataforma</label>
+          <select
+            name="platform"
+            defaultValue={filterPlatform}
+            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1.5 text-sm text-white focus:border-pink-500 focus:outline-none min-w-[130px]"
+          >
+            <option value="">Todas</option>
+            {platforms.map(p => (
+              <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">Perfil</label>
+          <select
+            name="handle"
+            defaultValue={filterHandle}
+            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1.5 text-sm text-white focus:border-pink-500 focus:outline-none min-w-[160px]"
+          >
+            <option value="">Todos</option>
+            {profiles?.map(p => (
+              <option key={p.id} value={p.handle}>@{p.handle} ({p.platform})</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">De</label>
+          <input
+            type="date"
+            name="from"
+            defaultValue={filterFrom}
+            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1.5 text-sm text-white focus:border-pink-500 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">Até</label>
+          <input
+            type="date"
+            name="to"
+            defaultValue={filterTo}
+            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1.5 text-sm text-white focus:border-pink-500 focus:outline-none"
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="px-4 py-1.5 rounded-md bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium transition-colors"
+        >
+          Filtrar
+        </button>
+
+        {(filterPlatform || filterHandle || filterFrom || filterTo) && (
+          <a
+            href={`/dashboard/projects/${id}/posts`}
+            className="px-3 py-1.5 rounded-md text-sm text-neutral-400 hover:text-white transition-colors"
+          >
+            Limpar
+          </a>
+        )}
+      </form>
+
       {posts.length === 0 ? (
         <div className="text-center py-20 border border-neutral-800 border-dashed rounded-xl bg-neutral-950/50">
-          <p className="text-neutral-500">Nenhum post coletado ainda.</p>
+          <p className="text-neutral-500">Nenhum post encontrado com esses filtros.</p>
         </div>
       ) : (
         <div className="rounded-xl border border-neutral-800 overflow-hidden">
@@ -63,9 +167,9 @@ export default async function ProjectPostsPage({ params }: Context) {
                     <td className="px-4 py-3">
                       {post.thumbnail_url ? (
                         <a href={post.content_url || '#'} target="_blank" rel="noreferrer">
-                          <img 
-                            src={post.thumbnail_url} 
-                            alt="" 
+                          <img
+                            src={post.thumbnail_url}
+                            alt=""
                             className="w-12 h-12 object-cover rounded bg-neutral-800"
                             loading="lazy"
                           />
@@ -86,9 +190,9 @@ export default async function ProjectPostsPage({ params }: Context) {
                             {post.post_type || 'post'}
                           </span>
                           {post.content_url && (
-                            <a 
-                              href={post.content_url} 
-                              target="_blank" 
+                            <a
+                              href={post.content_url}
+                              target="_blank"
                               rel="noreferrer"
                               className="text-xs text-pink-500 hover:text-pink-400 inline-flex items-center gap-1"
                             >

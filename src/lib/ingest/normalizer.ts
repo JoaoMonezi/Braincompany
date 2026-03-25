@@ -24,23 +24,59 @@ export function normalizeInstagram(item: any): NormalizedPost | null {
   }
 }
 
-/** TikTok Scraper (clockworks/tiktok-scraper) */
+/** TikTok Scraper — handles multiple Apify actor payload shapes */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function normalizeTikTok(item: any): NormalizedPost | null {
   if (!item?.id) return null
+
+  // Caption: different actors use different field names
+  const caption =
+    item.text || item.desc || item.description || item.title || ''
+
+  // Thumbnail: try every known field path
+  const thumbnail_url =
+    item.videoMeta?.coverUrl ||
+    item.video?.cover ||
+    item.video?.dynamicCover ||
+    item.video?.originCover ||
+    item.covers?.[0] ||
+    item.cover ||
+    item.thumbnail ||
+    undefined
+
+  // Content URL
+  const content_url =
+    item.webVideoUrl ||
+    item.videoUrl ||
+    item.url ||
+    (item.id && item.authorMeta?.name
+      ? `https://www.tiktok.com/@${item.authorMeta.name}/video/${item.id}`
+      : undefined)
+
+  // createTime can be a unix timestamp (number) or ISO string
+  let published_at: string | undefined
+  if (item.createTimeISO) {
+    published_at = item.createTimeISO
+  } else if (item.createTime) {
+    const ts = typeof item.createTime === 'number'
+      ? (item.createTime > 1e12 ? item.createTime : item.createTime * 1000)
+      : undefined
+    if (ts) published_at = new Date(ts).toISOString()
+  }
+
   return {
     external_id: String(item.id),
-    content_url: item.webVideoUrl,
-    thumbnail_url: item.covers?.[0] ?? item.cover,
-    caption: item.desc || '',
+    content_url,
+    thumbnail_url,
+    caption,
     post_type: item.isSlideshow ? 'carousel' : 'video',
-    published_at: item.createTime ? new Date(item.createTime * 1000).toISOString() : undefined,
+    published_at,
     metrics: {
-      views: item.playCount ?? item.statsV2?.playCount ?? undefined,
-      likes: item.diggCount ?? item.statsV2?.diggCount ?? undefined,
-      comments: item.commentCount ?? item.statsV2?.commentCount ?? undefined,
-      shares: item.shareCount ?? item.statsV2?.shareCount ?? undefined,
-      duration: item.video?.duration ?? undefined,
+      views: item.playCount ?? item.statsV2?.playCount ?? item.videoMeta?.playCount ?? undefined,
+      likes: item.diggCount ?? item.statsV2?.diggCount ?? item.likes ?? undefined,
+      comments: item.commentCount ?? item.statsV2?.commentCount ?? item.comments ?? undefined,
+      shares: item.shareCount ?? item.statsV2?.shareCount ?? item.shares ?? undefined,
+      duration: item.video?.duration ?? item.videoMeta?.duration ?? undefined,
     },
   }
 }
