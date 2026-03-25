@@ -44,6 +44,19 @@ export async function createScrapingJob(
   return data
 }
 
+/** Busca todos os jobs com status 'running' */
+export async function getRunningJobs() {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('scraping_jobs')
+    .select('*, profiles(*)')
+    .eq('status', 'running')
+    .order('created_at', { ascending: true })
+
+  if (error) throw new Error(`getRunningJobs: ${error.message}`)
+  return data ?? []
+}
+
 /** Busca um job pelo providerJobId */
 export async function getScrapingJobByProviderJobId(providerJobId: string) {
   const supabase = createAdminClient()
