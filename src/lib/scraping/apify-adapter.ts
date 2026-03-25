@@ -88,11 +88,12 @@ export class ApifyAdapter implements ScrapingAdapter {
 
     if (!appUrl || appUrl.includes('localhost')) return undefined
 
+    const cleanAppUrl = appUrl.endsWith('/') ? appUrl.slice(0, -1) : appUrl
+
     return [
       {
         eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED', 'ACTOR.RUN.ABORTED', 'ACTOR.RUN.TIMED_OUT'],
-        requestUrl: `${appUrl}/api/ingest`,
-        payloadTemplate: `{"eventType":"{{eventType}}","eventData":{{eventData}},"resource":{{resource}}}`,
+        requestUrl: `${cleanAppUrl}/api/ingest`,
         headersTemplate: secret ? `{ "x-webhook-secret": "${secret}" }` : undefined
       }
     ]

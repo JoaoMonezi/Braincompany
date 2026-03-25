@@ -77,40 +77,46 @@ export const normalizers = {
  * Aplica as rules do perfil ao post normalizado.
  * Retorna true se o post deve ser coletado, false se deve ser ignorado.
  */
-export function applyRules(post: NormalizedPost, rules: ProfileRules): boolean {
+export function applyRules(post: NormalizedPost, rules: Partial<ProfileRules>): boolean {
   const caption = (post.caption ?? '').toLowerCase()
   const views = post.metrics.views ?? 0
 
+  const minViews = rules.min_views ?? 0
+  const includeHashtags = rules.include_hashtags ?? []
+  const excludeHashtags = rules.exclude_hashtags ?? []
+  const captionContains = rules.caption_contains ?? []
+  const captionExcludes = rules.caption_excludes ?? []
+
   // min_views
-  if (rules.min_views > 0 && views < rules.min_views) return false
+  if (minViews > 0 && views < minViews) return false
 
   // include_hashtags — pelo menos uma deve estar presente
-  if (rules.include_hashtags.length > 0) {
-    const hasIncluded = rules.include_hashtags.some((tag) =>
+  if (includeHashtags.length > 0) {
+    const hasIncluded = includeHashtags.some((tag) =>
       caption.includes(tag.toLowerCase().replace(/^#/, ''))
     )
     if (!hasIncluded) return false
   }
 
   // exclude_hashtags — se qualquer uma estiver presente, ignora
-  if (rules.exclude_hashtags.length > 0) {
-    const hasExcluded = rules.exclude_hashtags.some((tag) =>
+  if (excludeHashtags.length > 0) {
+    const hasExcluded = excludeHashtags.some((tag) =>
       caption.includes(tag.toLowerCase().replace(/^#/, ''))
     )
     if (hasExcluded) return false
   }
 
   // caption_contains — todos os termos devem estar no caption
-  if (rules.caption_contains.length > 0) {
-    const hasAll = rules.caption_contains.every((term) =>
+  if (captionContains.length > 0) {
+    const hasAll = captionContains.every((term) =>
       caption.includes(term.toLowerCase())
     )
     if (!hasAll) return false
   }
 
   // caption_excludes — nenhum dos termos pode estar no caption
-  if (rules.caption_excludes.length > 0) {
-    const hasAny = rules.caption_excludes.some((term) =>
+  if (captionExcludes.length > 0) {
+    const hasAny = captionExcludes.some((term) =>
       caption.includes(term.toLowerCase())
     )
     if (hasAny) return false
